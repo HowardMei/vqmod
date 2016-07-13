@@ -1,30 +1,28 @@
 <?php
-  
+
   /**
-   * VQMod
+   * VQMod (LiteCart Edition)
    * @description Main Object used
    */
   abstract class VQMod {
-    public static $_vqversion = '2.5.2';						// Current version number
-    
-    private static $_modFileList = array();						// Array of xml files
-    private static $_mods = array();							// Array of modifications to apply
-    private static $_filesModded = array();						// Array of already modified files
-    private static $_doNotMod = array();						// Array of files not to apply modifications to
-    private static $_cwd = '';									// Current working directory path
-    private static $_folderChecks = false;						// Flag for already checked log/cache folders exist
-    private static $_cachePathFull = '';						// Full cache folder path
-    private static $_lastModifiedTime = 0;						// Integer representing the last time anything was modified
-    private static $_devMode = false;							// Flag for developer mode - disables caching while true
+    public static $_vqversion = '2.5.2';        // Current version number
 
-    public static $vqCachePath = 'vqmod/vqcache/';				// Relative path to cache file directory
-    public static $modCache = 'vqmod/mods.cache';				// Relative path to serialized mods array cache file
-    public static $checkedCache = 'vqmod/checked.cache';		// Relative path to already checked files array cache file
-    public static $protectedFilelist = 'vqmod/vqprotect.txt';	// Relative path to protected files array cache file
-    public static $pathReplaces = 'vqmod/pathReplaces.php';		// Relative path to dynamic path replacement file
-    public static $fileModding = false;							// Reference to the current file being modified by vQmod for logging
-    public static $directorySeparator = '';						// System directory separator (/ or \ depending on OS)
-    public static $replaces = array();							// Array of regex replaces to perform on file paths
+    private static $_modFileList = array();     // Array of xml files
+    private static $_mods = array();            // Array of modifications to apply
+    private static $_filesModded = array();     // Array of already modified files
+    private static $_doNotMod = array();        // Array of files not to apply modifications to
+    private static $_cwd = '';                  // Current working directory path
+    private static $_folderChecks = false;      // Flag for already checked log/cache folders exist
+    private static $_cachePathFull = '';        // Full cache folder path
+    private static $_lastModifiedTime = 0;      // Integer representing the last time anything was modified
+    private static $_devMode = false;           // Flag for developer mode - disables caching while true
+
+    public static $vqCachePath = 'vqmod/vqcache/';             // Relative path to cache file directory
+    public static $modCache = 'vqmod/mods.cache';              // Relative path to serialized mods array cache file
+    public static $checkedCache = 'vqmod/checked.cache';       // Relative path to already checked files array cache file
+    public static $protectedFilelist = 'vqmod/vqprotect.txt';  // Relative path to protected files array cache file
+    public static $fileModding = false;                        // Reference to the current file being modified by vQmod for logging
+    public static $replaces = array();                         // Array of regex replaces to perform on file paths array(search => replace)
 
     /**
      * VQMod::bootup()
@@ -34,32 +32,29 @@
      * @description Startup of VQMod
      */
     public static function bootup($path = false) {
+
       if (!class_exists('DOMDocument', false)) {
         trigger_error(__METHOD__.' - vQmod requires the PHP DOMDocument extension', E_USER_ERROR);
       }
 
-      self::$directorySeparator = defined('DIRECTORY_SEPARATOR') ? DIRECTORY_SEPARATOR : '/';
+      if (!$path) $path = str_replace("\\", '/', dirname(dirname(__FILE__)));
+      self::$_cwd = self::_realpath($path);
 
-      if (!$path){
-        $path = dirname(dirname(__FILE__));
-      }
-      self::_setCwd($path);
-
-      $replacesPath = self::path(self::$pathReplaces);
-      $replaces = array();
-      if ($replacesPath) {
-        include_once($replacesPath);
-        self::$_lastModifiedTime = filemtime($replacesPath);
+      // Create cache folder if it doesn't exist
+      $cache_folder = self::path(self::$vqCachePath, true);
+      if (!is_dir($cache_folder)) {
+        if (!mkdir($cache_folder)) trigger_error(__METHOD__.' - Cannot create directory (' . $cache_folder . ')', E_USER_ERROR);
       }
 
-      self::$replaces = !is_array($replaces) ? array() : $replaces;
+      // Store cache folder path to save on repeat checks for path validity
+      self::$_cachePathFull = self::path(self::$vqCachePath);
+
       self::_getMods();
       self::_loadProtected();
       self::_loadChecked();
     }
 
     /**
-
      * VQMod::modCheck()
      *
      * @param string $sourceFile path for file to be modified
@@ -68,18 +63,6 @@
      * @description Checks if a file has modifications and applies them, returning cache files or the file name
      */
     public static function modCheck($sourceFile, $modificationFile = false) {
-
-      if (!self::$_folderChecks) {
-
-        // Create cache folder if it doesn't exist
-        $cache_folder = self::path(self::$vqCachePath, true);
-        self::dirCheck($cache_folder);
-
-        // Store cache folder path to save on repeat checks for path validity
-        self::$_cachePathFull = self::path(self::$vqCachePath);
-
-        self::$_folderChecks = true;
-      }
 
       if (!preg_match('%^([a-z]:)?[\\\\/]%i', $sourceFile)) {
         $sourcePath = self::path($sourceFile);
@@ -102,7 +85,7 @@
       }
 
       $stripped_filename = preg_replace('~^' . preg_quote(self::getCwd(), '~i') . '~', '', $sourcePath);
-      $cacheFile = self::_cacheName($stripped_filename);
+      $cacheFile = self::$_cachePathFull . 'vq2-' . preg_replace('~[/\\\\]+~', '_', $stripped_filename);
       $file_last_modified = filemtime($sourcePath);
 
       if (file_exists($cacheFile) && filemtime($cacheFile) >= self::$_lastModifiedTime && filemtime($cacheFile) >= $file_last_modified) {
@@ -148,12 +131,13 @@
      * @return bool, string
      * @description Returns the full true path of a file if it exists, otherwise false
      */
-    public static function path($path, $skip_real = false) {
+    public static function path($path, $skip_real=false) {
+
       $tmp = self::$_cwd . $path;
       $realpath = $skip_real ? $tmp : self::_realpath($tmp);
-      if (!$realpath) {
-        return false;
-      }
+
+      if (!$realpath) return false;
+
       return $realpath;
     }
 
@@ -165,21 +149,6 @@
      */
     public static function getCwd() {
       return self::$_cwd;
-    }
-
-    /**
-     * VQMod::dirCheck()
-     *
-     * @param string $path
-     * @return null
-     * @description Creates $path folder if it doesn't exist
-     */
-    public static function dirCheck($path) {
-      if (!is_dir($path)) {
-        if (!mkdir($path)) {
-          trigger_error(__METHOD__.' - Cannot create directory (' . $path . ')', E_USER_ERROR);
-        }
-      }
     }
 
     /**
@@ -204,7 +173,7 @@
     private static function _getMods() {
 
       self::$_modFileList = glob(self::path('vqmod/xml/', true) . '*.xml');
-      
+
       if (!empty(self::$_modFileList)) {
         foreach(self::$_modFileList as $file) {
           if (file_exists($file)) {
@@ -296,11 +265,12 @@
      * @description Loads protected list and adds them to _doNotMod array
      */
     private static function _loadProtected() {
+
       $file = self::path(self::$protectedFilelist);
+
       if ($file && is_file($file)) {
         $paths = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         if (!empty($paths)) {
-
 
           foreach($paths as $path) {
             $fullPath = self::path($path);
@@ -319,7 +289,9 @@
      * @description Loads already checked files and adds them to _doNotMod array
      */
     private static function _loadChecked() {
+
       $file = self::path(self::$checkedCache);
+
       if ($file && is_file($file)) {
         $paths = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         if (!empty($paths)) {
@@ -334,28 +306,6 @@
     }
 
     /**
-     * VQMod::_cacheName()
-     *
-     * @param string $file Filename to be converted to cache filename
-     * @return string
-     * @description Returns cache file name for a path
-     */
-    private static function _cacheName($file) {
-      return self::$_cachePathFull . 'vq2-' . preg_replace('~[/\\\\]+~', '_', $file);
-    }
-
-    /**
-     * VQMod::_setCwd()
-     *
-     * @param string $path Path to be used as current working directory
-     * @return null
-     * @description Sets the current working directory variable
-     */
-    private static function _setCwd($path) {
-      self::$_cwd = self::_realpath($path);
-    }
-
-    /**
      * VQMod::_realpath()
      *
      * @param string $file
@@ -363,16 +313,13 @@
      * @description Returns real path of any path, adding directory slashes if necessary
      */
     private static function _realpath($file) {
-      if(is_executable($file)) {
-        $path = realpath($file);
-      } else {
-        $path = $file;
-      }
-		
-      if (!file_exists($path)) return false;
+
+      if (!file_exists($file)) return false;
+
+      $path = str_replace("\\", '/', realpath($file));
 
       if (is_dir($path)) {
-        $path = rtrim($path, self::$directorySeparator) . self::$directorySeparator;
+        $path = rtrim($path, '/') . '/';
       }
 
       return $path;
@@ -402,13 +349,13 @@
         $return = true;
         $modParts = explode('/', $modFilePath);
         $checkParts = explode('/', $checkFilePath);
-        
+
         if (count($modParts) !== count($checkParts)) {
            $return = false;
         } else {
 
           $toCheck = array_diff_assoc($modParts, $checkParts);
-          
+
           foreach($toCheck as $k => $part) {
             if ($part === '*') {
               continue;
@@ -523,122 +470,121 @@
 
         $indexCount = 0;
 
-        $tmp = $this->_explodeData($tmp);
+        $tmp = preg_split('#\R#', $tmp);
         $lineMax = count($tmp) - 1;
 
         switch($mod['search']->position) {
           case 'top':
-          $tmp[$mod['search']->offset] =	$mod['add']->getContent() . $tmp[$mod['search']->offset];
-          break;
+            $tmp[$mod['search']->offset] =  $mod['add']->getContent() . $tmp[$mod['search']->offset];
+            break;
 
           case 'bottom':
-          $offset = $lineMax - $mod['search']->offset;
-          if ($offset < 0){
-            $tmp[-1] = $mod['add']->getContent();
-          } else {
-            $tmp[$offset] .= $mod['add']->getContent();
-          }
-          break;
+            $offset = $lineMax - $mod['search']->offset;
+            if ($offset < 0){
+              $tmp[-1] = $mod['add']->getContent();
+            } else {
+              $tmp[$offset] .= $mod['add']->getContent();
+            }
+            break;
 
           default:
+            $changed = false;
+            foreach($tmp as $lineNum => $line) {
+              if (strlen($mod['search']->getContent()) == 0) {
+                if ($mod['error'] == 'log' || $mod['error'] == 'abort') {
+                  trigger_error(__METHOD__.' - Empty search content in "'. $modObject->id  .'": '. VQMod::$fileModding .' '. $skip, E_USER_WARNING);
+                }
+                break;
+              }
 
-          $changed = false;
-          foreach($tmp as $lineNum => $line) {
-            if (strlen($mod['search']->getContent()) == 0) {
+              if ($mod['search']->regex == 'true') {
+                $pos = @preg_match($mod['search']->getContent(), $line);
+                if ($pos === false) {
+                  if ($mod['error'] == 'log' || $mod['error'] == 'abort' ) {
+                    //trigger_error(__METHOD__.' - Invalid regular expression ('. VQMod::$fileModding .'): '. $mod['search']->getContent(), E_USER_WARNING);
+                    trigger_error(__METHOD__.' - Invalid regular expression in "'. $modObject->id  .'": '. VQMod::$fileModding .' '. $skip, E_USER_WARNING);
+                  }
+                  continue 2;
+                } elseif ($pos == 0) {
+                  $pos = false;
+                }
+              } else {
+                $pos = strpos($line, $mod['search']->getContent());
+              }
+
+              if ($pos !== false) {
+                $indexCount++;
+                $changed = true;
+
+                if (!$mod['search']->indexes() || ($mod['search']->indexes() && in_array($indexCount, $mod['search']->indexes()))) {
+
+                  switch($mod['search']->position) {
+                    case 'before':
+                      $offset = ($lineNum - $mod['search']->offset < 0) ? -1 : $lineNum - $mod['search']->offset;
+                      $tmp[$offset] = empty($tmp[$offset]) ? $mod['add']->getContent() : $mod['add']->getContent() . "\n" . $tmp[$offset];
+                      break;
+
+                    case 'after':
+                      $offset = ($lineNum + $mod['search']->offset > $lineMax) ? $lineMax : $lineNum + $mod['search']->offset;
+                      $tmp[$offset] = $tmp[$offset] . "\n" . $mod['add']->getContent();
+                      break;
+
+                    case 'ibefore':
+                      $tmp[$lineNum] = str_replace($mod['search']->getContent(), $mod['add']->getContent() . $mod['search']->getContent(), $line);
+                      break;
+
+                    case 'iafter':
+                      $tmp[$lineNum] = str_replace($mod['search']->getContent(), $mod['search']->getContent() . $mod['add']->getContent(), $line);
+                      break;
+
+                    default:
+                      if (!empty($mod['search']->offset)) {
+                        if ($mod['search']->offset > 0) {
+                          for($i = 1; $i <= $mod['search']->offset; $i++) {
+                            if (isset($tmp[$lineNum + $i])) {
+                              $tmp[$lineNum + $i] = '';
+                            }
+                          }
+                        } elseif ($mod['search']->offset < 0) {
+                          for($i = -1; $i >= $mod['search']->offset; $i--) {
+                            if (isset($tmp[$lineNum + $i])) {
+                              $tmp[$lineNum + $i] = '';
+                            }
+                          }
+                        }
+                      }
+
+                      if ($mod['search']->regex == 'true') {
+                        $tmp[$lineNum] = preg_replace($mod['search']->getContent(), $mod['add']->getContent(), $line);
+                      } else {
+                        $tmp[$lineNum] = str_replace($mod['search']->getContent(), $mod['add']->getContent(), $line);
+                      }
+                      break;
+                  }
+                }
+              }
+            }
+
+            if (!$changed) {
+              $skip = ($mod['error'] == 'skip' || $mod['error'] == 'log') ? ' (SKIPPED)' : ' (ABORTING MOD)';
+
               if ($mod['error'] == 'log' || $mod['error'] == 'abort') {
-                //trigger_error(__METHOD__.' - Empty search content ('. VQMod::$fileModding .')', E_USER_WARNING);
-                trigger_error(__METHOD__.' - Empty search content in "'. $modObject->id  .'": '. VQMod::$fileModding .' '. $skip, E_USER_WARNING);
+                //VQMod::$log->write('VQModObject::applyMod - SEARCH NOT FOUND' . $skip . ': ' . $mod['search']->getContent(), $this);
+                trigger_error(__METHOD__.' - Search not found in "'. $modObject->id  .'": '. VQMod::$fileModding .' '. $skip, E_USER_WARNING);
               }
-              break;
-            }
 
-            if ($mod['search']->regex == 'true') {
-              $pos = @preg_match($mod['search']->getContent(), $line);
-              if ($pos === false) {
-                if ($mod['error'] == 'log' || $mod['error'] == 'abort' ) {
-                  //trigger_error(__METHOD__.' - Invalid regular expression ('. VQMod::$fileModding .'): '. $mod['search']->getContent(), E_USER_WARNING);
-                  trigger_error(__METHOD__.' - Invalid regular expression in "'. $modObject->id  .'": '. VQMod::$fileModding .' '. $skip, E_USER_WARNING);
-                }
-                continue 2;
-              } elseif ($pos == 0) {
-                $pos = false;
+              if ($mod['error'] == 'abort') {
+                $this->_skip = true;
+                return;
               }
-            } else {
-              $pos = strpos($line, $mod['search']->getContent());
+
             }
 
-            if ($pos !== false) {
-              $indexCount++;
-              $changed = true;
-
-              if (!$mod['search']->indexes() || ($mod['search']->indexes() && in_array($indexCount, $mod['search']->indexes()))) {
-
-                switch($mod['search']->position) {
-                  case 'before':
-                  $offset = ($lineNum - $mod['search']->offset < 0) ? -1 : $lineNum - $mod['search']->offset;
-                  $tmp[$offset] = empty($tmp[$offset]) ? $mod['add']->getContent() : $mod['add']->getContent() . "\n" . $tmp[$offset];
-                  break;
-
-                  case 'after':
-                  $offset = ($lineNum + $mod['search']->offset > $lineMax) ? $lineMax : $lineNum + $mod['search']->offset;
-                  $tmp[$offset] = $tmp[$offset] . "\n" . $mod['add']->getContent();
-                  break;
-
-                  case 'ibefore':
-                  $tmp[$lineNum] = str_replace($mod['search']->getContent(), $mod['add']->getContent() . $mod['search']->getContent(), $line);
-                  break;
-
-                  case 'iafter':
-                  $tmp[$lineNum] = str_replace($mod['search']->getContent(), $mod['search']->getContent() . $mod['add']->getContent(), $line);
-                  break;
-
-                  default:
-                  if (!empty($mod['search']->offset)) {
-                    if ($mod['search']->offset > 0) {
-                      for($i = 1; $i <= $mod['search']->offset; $i++) {
-                        if (isset($tmp[$lineNum + $i])) {
-                          $tmp[$lineNum + $i] = '';
-                        }
-                      }
-                    } elseif ($mod['search']->offset < 0) {
-                      for($i = -1; $i >= $mod['search']->offset; $i--) {
-                        if (isset($tmp[$lineNum + $i])) {
-                          $tmp[$lineNum + $i] = '';
-                        }
-                      }
-                    }
-                  }
-
-                  if ($mod['search']->regex == 'true') {
-                    $tmp[$lineNum] = preg_replace($mod['search']->getContent(), $mod['add']->getContent(), $line);
-                  } else {
-                    $tmp[$lineNum] = str_replace($mod['search']->getContent(), $mod['add']->getContent(), $line);
-                  }
-                  break;
-                }
-              }
-            }
-          }
-
-          if (!$changed) {
-            $skip = ($mod['error'] == 'skip' || $mod['error'] == 'log') ? ' (SKIPPED)' : ' (ABORTING MOD)';
-
-            if ($mod['error'] == 'log' || $mod['error'] == 'abort') {
-              //VQMod::$log->write('VQModObject::applyMod - SEARCH NOT FOUND' . $skip . ': ' . $mod['search']->getContent(), $this);
-              trigger_error(__METHOD__.' - Search not found in "'. $modObject->id  .'": '. VQMod::$fileModding .' '. $skip, E_USER_WARNING);
-            }
-
-            if ($mod['error'] == 'abort') {
-              $this->_skip = true;
-              return;
-            }
-
-          }
-
-          break;
+            break;
         }
+
         ksort($tmp);
-        $tmp = $this->_implodeData($tmp);
+        $tmp = implode(PHP_EOL, $tmp);
       }
 
       VQMod::$fileModding = false;
@@ -656,8 +602,6 @@
     private function _parseMods(DOMNode $node){
       $files = $node->getElementsByTagName('file');
 
-      $replaces = VQMod::$replaces;
-
       foreach($files as $file) {
         $path = $file->getAttribute('path') ? $file->getAttribute('path') : '';
         $filesToMod = explode(',', $file->getAttribute('name'));
@@ -665,11 +609,9 @@
         foreach($filesToMod as $filename) {
 
           $fileToMod = $path . $filename;
-          if (!empty($replaces)) {
-            foreach($replaces as $r) {
-              if (count($r) == 2) {
-                $fileToMod = preg_replace($r[0], $r[1], $fileToMod);
-              }
+          if (!empty(VQMod::$replaces)) {
+            foreach(VQMod::$replaces as $search => $replace) {
+              $fileToMod = preg_replace($search, $replace, $fileToMod);
             }
           }
 
@@ -681,7 +623,7 @@
               $fullPath = VQMod::getCwd() . $fileToMod;
             } else {
               if ($error == 'log' || $error == 'abort') {
-                $skip = ($error == 'log') ? ' (SKIPPED)' : ' (ABORTING MOD)';
+                $skip = ($error == 'log') ? ' [SKIPPED]' : ' [ABORTING MOD]';
                 trigger_error(__METHOD__.' - Could not resolve path ('. $fileToMod .') '. $skip, E_USER_WARNING);
               }
 
@@ -723,41 +665,19 @@
 
             if (!$skipOperation) {
               $this->mods[$fullPath][] = array(
-                'search' 		=> new VQSearchNode($search),
-
-                'add' 			=> new VQAddNode($add),
-                'ignoreif'		=> $ignoreif,
-                'error'		 	=> $error,
-                'fileToMod'		=> $fileToMod,
-                'opIndex'		=> $opIndex,
+                'search'     => new VQSearchNode($search),
+                'add'        => new VQAddNode($add),
+                'ignoreif'   => $ignoreif,
+                'error'      => $error,
+                'fileToMod'  => $fileToMod,
+                'opIndex'    => $opIndex,
               );
             }
           }
+
           VQMod::$fileModding = false;
         }
       }
-    }
-
-    /**
-     * VQModObject::_explodeData()
-     *
-     * @param string $data File contents
-     * @return string
-     * @description Splits a file into an array of individual lines
-     */
-    private function _explodeData($data) {
-      return explode("\n", $data);
-    }
-
-    /**
-     * VQModObject::_implodeData()
-     *
-     * @param array $data Array of lines
-     * @return string
-     * @description Joins an array of lines back into a text file
-     */
-    private function _implodeData($data) {
-      return implode("\n", $data);
     }
   }
 
@@ -777,7 +697,7 @@
      * @return null
      * @description Parses the node attributes and sets the node property
      */
-    public function	__construct(DOMNode $node) {
+    public function  __construct(DOMNode $node) {
       $this->_content = $node->nodeValue;
 
       if ($node->hasAttributes()) {
