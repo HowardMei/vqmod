@@ -1,7 +1,6 @@
-vqmod
+vQmod
 =====
 
-vQmod official repository
+This is an enhanced version of vQmod, specially for LiteCart.
 
-Please ensure you download from the RELEASES link above, or here - https://github.com/vqmod/vqmod/releases
-The official source code splits out platforms and will not run correctly if you don't use a proper release zip from the above link
+For the original RELEASES go to https://github.com/vqmod/vqmod/releases

@@ -5,7 +5,7 @@
    * @description Main Object used
    */
   abstract class VQMod {
-    public static $_vqversion = '2.5.2';        // Current version number
+  public static $_vqversion = '2.6.1';            // Current version number
 
     private static $_modFileList = array();     // Array of xml files
     private static $_mods = array();            // Array of modifications to apply
@@ -84,7 +84,7 @@
         return $sourceFile;
       }
 
-      $stripped_filename = preg_replace('~^' . preg_quote(self::getCwd(), '~i') . '~', '', $sourcePath);
+    $stripped_filename = preg_replace('~^' . preg_quote(self::getCwd(), '~') . '~i', '', $sourcePath);
       $cacheFile = self::$_cachePathFull . 'vq2-' . preg_replace('~[/\\\\]+~', '_', $stripped_filename);
       $file_last_modified = filemtime($sourcePath);
 
@@ -313,10 +313,13 @@
      * @description Returns real path of any path, adding directory slashes if necessary
      */
     private static function _realpath($file) {
+    if (is_executable($file)) {
+    if (!file_exists($path)) return false;
 
-      if (!file_exists($file)) return false;
+        $path = str_replace("\\", '/', realpath($file));
+    if (!$path) return false;
 
-      $path = str_replace("\\", '/', realpath($file));
+
 
       if (is_dir($path)) {
         $path = rtrim($path, '/') . '/';
@@ -472,6 +475,15 @@
 
         $tmp = preg_split('#\R#', $tmp);
         $lineMax = count($tmp) - 1;
+
+      // <add> tag attributes - Override <search> attributes if set
+      foreach(array_keys((array)$mod['search']) as $key) {
+        if ($key == "\x0VQNode\x0_content") { continue; }
+        if ($key == "trim") { continue; }
+        if (isset($mod['add']->$key) && $mod['add']->$key) {
+          $mod['search']->$key = $mod['add']->$key;
+        }
+      }
 
         switch($mod['search']->position) {
           case 'top':
@@ -645,7 +657,7 @@
             $ignoreif = $operation->getElementsByTagName('ignoreif')->item(0);
 
             if ($ignoreif) {
-              $ignoreif = new VQSearchNode($ignoreif);
+            $ignoreif = new VQNode($ignoreif);
             } else {
               $ignoreif = false;
             }
@@ -686,8 +698,8 @@
    * @description Basic node object blueprint
    */
   class VQNode {
+  public $regex = 'false';
     public $trim = 'false';
-
     private $_content = '';
 
     /**
@@ -759,4 +771,9 @@
    * @description Object for the <add> xml tags
    */
   class VQAddNode extends VQNode {
+  public $position = false;
+  public $offset = false;
+  public $index = false;
+  public $regex = false;
+  public $trim = 'false';
   }
